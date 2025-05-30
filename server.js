@@ -132,6 +132,34 @@ app.post('/api/login', (req, res) => {
     return;
   }
 
+  if (username === process.env.USER2_USERNAME && password === process.env.USER2_PASSWORD) {
+    const payload = {
+      user: {
+        id: 'user2-id',
+        username: username,
+        role: 'user2'
+      }
+    };
+
+    jwt.sign(
+      payload,
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' },
+      (err, token) => {
+        if (err) throw err;
+        res.json({
+          success: true,
+          token,
+          user: {
+            username: username,
+            role: 'user2'
+          }
+        });
+      }
+    );
+    return;
+  }
+
   // Invalid credentials
   res.status(401).json({ success: false, message: 'Invalid credentials' });
 });
@@ -150,6 +178,11 @@ app.get('/api/verify-token', auth, (req, res) => {
 // Logout route
 app.post('/api/logout', (req, res) => {
   res.json({ success: true, message: 'Logged out successfully' });
+});
+
+// Add this near your other routes
+app.get('/', (req, res) => {
+  res.json({ message: 'NANS Backend API is running', timestamp: new Date() });
 });
 
 // Enhanced attachment parsing
@@ -802,7 +835,11 @@ app.get('/api/applicants', auth, async (req, res) => {
         currentlyOnScholarship: (row['general_questions/currently_on_scholarship'] || '').trim().toLowerCase() === 'yes' ? 'Yes' : 'No',
         profileImage: profileImage, // Add the profile image URL
         imageStatus: profileImage ? 'success' : (attachmentField ? 'failed' : 'none'),
-        
+        whatIsNans: row['general_questions/what_is_nans'] || row['general_questions_what_is_nans'] || '',
+        supportGhanaianStudents: row['general_questions/support_ghanaian_students'] || row['general_questions_support_ghanaian_students'] || '',
+        positionHeld: row['general_questions/position_held'] || row['general_questions_position_held'] || '',
+        pastScholarshipFunder: row['general_questions/past_scholarship_funder'] || row['general_questions_past_scholarship_funder'] || '',
+        numberOfChildren: row['general_questions/number_of_children'] || row['general_questions_number_of_children'] || '',
         // Add caregiver information
         caregiverType: caregiverType,
         fatherName: fatherName,
@@ -927,7 +964,12 @@ app.get('/api/dashboard-stats', async (req, res) => {
         isMember: isMember,
         hadScholarship: hadScholarship,
         currentlyOnScholarship: currentlyOnScholarship,
-        caregiverType: caregiverType
+        caregiverType: caregiverType,
+        whatIsNans: row['general_questions/what_is_nans'] || row['general_questions_what_is_nans'] || '',
+        supportGhanaianStudents: row['general_questions/support_ghanaian_students'] || row['general_questions_support_ghanaian_students'] || '',
+        positionHeld: row['general_questions/position_held'] || row['general_questions_position_held'] || '',
+        pastScholarshipFunder: row['general_questions/past_scholarship_funder'] || row['general_questions_past_scholarship_funder'] || '',
+        numberOfChildren: row['general_questions/number_of_children'] || row['general_questions_number_of_children'] || '',
       };
     });
     
@@ -1031,50 +1073,115 @@ app.get('/api/dashboard-stats', async (req, res) => {
         caregiverTypes['Not Specified'] = (caregiverTypes['Not Specified'] || 0) + 1;
       }
     });
+
+    // Process "What is NANS" responses
+const whatIsNansResponses = {};
+applicants.forEach(applicant => {
+  const response = applicant.whatIsNans || 'Not Answered';
+  whatIsNansResponses[response] = (whatIsNansResponses[response] || 0) + 1;
+});
+
+// Process "Support Ghanaian Students" responses
+const supportGhanaianStudentsResponses = {};
+applicants.forEach(applicant => {
+  const response = applicant.supportGhanaianStudents || 'Not Answered';
+  supportGhanaianStudentsResponses[response] = (supportGhanaianStudentsResponses[response] || 0) + 1;
+});
+
+// Process positions held details
+const positionsHeldDetails = {};
+applicants.forEach(applicant => {
+  const position = applicant.positionHeld;
+  if (position) {
+    positionsHeldDetails[position] = (positionsHeldDetails[position] || 0) + 1;
+  }
+});
+
+// Process past scholarship funders
+const pastScholarshipFunders = {};
+applicants.forEach(applicant => {
+  const funder = applicant.pastScholarshipFunder;
+  if (funder) {
+    pastScholarshipFunders[funder] = (pastScholarshipFunders[funder] || 0) + 1;
+  }
+});
+
+// Process number of children
+const childrenDistribution = {
+  '0': 0,
+  '1': 0,
+  '2': 0,
+  '3': 0,
+  '4+': 0
+};
+
+applicants.forEach(applicant => {
+  const numChildren = parseInt(applicant.numberOfChildren || '0');
+  if (numChildren === 0) childrenDistribution['0']++;
+  else if (numChildren === 1) childrenDistribution['1']++;
+  else if (numChildren === 2) childrenDistribution['2']++;
+  else if (numChildren === 3) childrenDistribution['3']++;
+  else if (numChildren >= 4) childrenDistribution['4+']++;
+});
     
     res.json({
-      success: true,
-      data: {
-        totalApplicants: applicants.length,
-        membership: [
-          { name: 'Members', value: members },
-          { name: 'Non-members', value: nonMembers },
-        ],
-        genderDistribution: Object.entries(genders)
-          .sort((a, b) => b[1] - a[1])
-          .map(([name, value]) => ({ name, value })),
-        ageDistribution: Object.entries(ageGroups)
-          .map(([age, count]) => ({ age, count })),
-        universities: Object.entries(universities)
-          .sort((a, b) => b[1] - a[1])
-          .map(([name, value]) => ({ name, value })),
-        universityLocations: Object.entries(universityLocations)
-          .sort((a, b) => b[1] - a[1])
-          .map(([name, value]) => ({ name, value })),
-        programs: Object.entries(programs)
-          .sort((a, b) => b[1] - a[1])
-          .map(([name, value]) => ({ name, value })),
-        levels: Object.entries(levels)
-          .sort((a, b) => b[1] - a[1])
-          .map(([name, value]) => ({ name, value })),
-        districts: Object.entries(districts)
-          .sort((a, b) => b[1] - a[1])
-          .map(([name, value]) => ({ name, value })),
-        referralSources: Object.entries(referralSources)
-          .sort((a, b) => b[1] - a[1])
-          .map(([name, value]) => ({ name, value })),
-        positionsHeld: Object.entries(positionsHeld)
-          .map(([name, value]) => ({ name, value })),
-        scholarshipData: [
-          { name: 'Previous Scholarship', value: previousScholarship },
-          { name: 'Current Scholarship', value: currentScholarship },
-          { name: 'No Scholarship', value: noScholarship },
-        ],
-        caregiverTypes: Object.entries(caregiverTypes)
-          .sort((a, b) => b[1] - a[1])
-          .map(([name, value]) => ({ name, value }))
-      }
-    });
+  success: true,
+  data: {
+    totalApplicants: applicants.length,
+    membership: [
+      { name: 'Members', value: members },
+      { name: 'Non-members', value: nonMembers },
+    ],
+    genderDistribution: Object.entries(genders)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, value]) => ({ name, value })),
+    ageDistribution: Object.entries(ageGroups)
+      .map(([age, count]) => ({ age, count })),
+    universities: Object.entries(universities)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, value]) => ({ name, value })),
+    universityLocations: Object.entries(universityLocations)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, value]) => ({ name, value })),
+    programs: Object.entries(programs)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, value]) => ({ name, value })),
+    levels: Object.entries(levels)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, value]) => ({ name, value })),
+    districts: Object.entries(districts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, value]) => ({ name, value })),
+    referralSources: Object.entries(referralSources)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, value]) => ({ name, value })),
+    positionsHeld: Object.entries(positionsHeld)
+      .map(([name, value]) => ({ name, value })),
+    scholarshipData: [
+      { name: 'Previous Scholarship', value: previousScholarship },
+      { name: 'Current Scholarship', value: currentScholarship },
+      { name: 'No Scholarship', value: noScholarship },
+    ],
+    caregiverTypes: Object.entries(caregiverTypes)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, value]) => ({ name, value })),
+    whatIsNansResponses: Object.entries(whatIsNansResponses)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, value]) => ({ name, value })),
+    supportGhanaianStudentsResponses: Object.entries(supportGhanaianStudentsResponses)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, value]) => ({ name, value })),
+    positionsHeldDetails: Object.entries(positionsHeldDetails)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, value]) => ({ name, value })),
+    pastScholarshipFunders: Object.entries(pastScholarshipFunders)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, value]) => ({ name, value })),
+    childrenDistribution: Object.entries(childrenDistribution)
+      .map(([children, count]) => ({ children, count }))
+  }
+});
+
   } catch (error) {
     console.error('Error generating dashboard stats:', error);
     res.status(500).json({ success: false, error: error.message });
